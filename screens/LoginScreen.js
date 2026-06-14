@@ -7,7 +7,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const API_BASE = 'http://192.168.3.106:8000';
+import { API_BASE } from '../apiConfig';
 
 const C = {
   gold:'#C9A84C', goldPale:'#F5E9C8', goldD:'#9A7A30',

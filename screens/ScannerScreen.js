@@ -2,37 +2,20 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, Animated, Easing, Modal, StatusBar,
+  StyleSheet, Animated, Easing, Modal, StatusBar, Alert,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_BASE } from '../apiConfig';
 
 const C = {
   gold: '#C9A84C', goldL: '#E8C96A', goldPale: '#F5E9C8', goldD: '#9A7A30',
   ink: '#0F0D0A', soft: '#2A2520', cream: '#FDFAF3', surf: '#F2EDE2',
   mute: '#8A7E70', line: '#E2D8C8',
   green: '#2D7A4F', greenBg: '#E8F5EE',
-  red: '#C0392B', redBg: '#FDECEA',
-  blue: '#1A5FAB', blueBg: '#EAF1FB',
+  red: '#C0392B',   redBg: '#FDECEA',
+  blue: '#1A5FAB',  blueBg: '#EAF1FB',
   amber: '#B8620A', amberBg: '#FDF3E3',
 };
-
-const INSTRUMENTOS = [
-  { id:1, identificador:'INS-0001', nome:'Violino Yamaha V5',     naipe:'Cordas',   rfid:'A1B2C3D4', disponivel:true,  emprestado_para:null          },
-  { id:2, identificador:'INS-0002', nome:'Clarinete Jupiter 631', naipe:'Madeiras', rfid:'E5F6G7H8', disponivel:false, emprestado_para:'Ana Silva'   },
-  { id:3, identificador:'INS-0003', nome:'Trompete Bach',         naipe:'Metais',   rfid:'I9J0K1L2', disponivel:true,  emprestado_para:null          },
-  { id:4, identificador:'INS-0004', nome:'Flauta Pearl 525',      naipe:'Madeiras', rfid:'M3N4O5P6', disponivel:true,  emprestado_para:null          },
-  { id:5, identificador:'INS-0005', nome:'Saxofone Alto Yamaha',  naipe:'Madeiras', rfid:'Y5Z6A7B8', disponivel:false, emprestado_para:'Carlos Lima' },
-  { id:6, identificador:'INS-0006', nome:'Viola Stentor',         naipe:'Cordas',   rfid:'C9D0E1F2', disponivel:false, emprestado_para:'Maria Costa' },
-];
-
-const ALUNOS = [
-  { id:1, nome:'Ana Silva',    matricula:'2024001' },
-  { id:2, nome:'Carlos Lima',  matricula:'2024002' },
-  { id:3, nome:'Maria Costa',  matricula:'2024003' },
-  { id:4, nome:'Pedro Alves',  matricula:'2024004' },
-  { id:5, nome:'Sofia Rocha',  matricula:'2024005' },
-  { id:6, nome:'Lucas Mendes', matricula:'2024006' },
-];
 
 const hoje = () => new Date().toLocaleDateString('pt-BR');
 const hora  = () => new Date().toLocaleTimeString('pt-BR', { hour:'2-digit', minute:'2-digit' });
@@ -101,30 +84,111 @@ export default function ScannerScreen() {
   const [found,      setFound]      = useState(null);
   const [alunoSel,   setAlunoSel]   = useState(null);
   const [alunoModal, setAlunoModal] = useState(false);
-  const [historico,  setHistorico]  = useState([
-    { id:1, nome:'Saxofone Alto Yamaha', ident:'INS-0005', acao:'retirada',  quem:'Lucas Mendes', hora:'08:30', rfid:'Y5Z6A7B8' },
-    { id:2, nome:'Flauta Pearl 525',     ident:'INS-0004', acao:'devolucao', quem:'Sofia Rocha',  hora:'08:52', rfid:'M3N4O5P6' },
-  ]);
+  const [alunos,     setAlunos]     = useState([]);
+  const [stats,      setStats]      = useState({ disponiveis:0, emprestados:0, vencidos:0 });
+  const [historico,  setHistorico]  = useState([]);
   const timerRef = useRef(null);
+
+  const carregarAlunos = async () => {
+    try {
+      const axios = require('axios').default;
+      const res = await axios.get(`${API_BASE}/alunos/api/listar/`);
+      setAlunos(res.data);
+    } catch (err) {
+      console.log('Erro ao buscar alunos:', err);
+    }
+  };
+
+  const carregarStatsEHistorico = async () => {
+    try {
+      const axios = require('axios').default;
+      const pRes = await axios.get(`${API_BASE}/instrumentos/api/painel/`);
+      setStats({
+        disponiveis: pRes.data.instrumentos.disponiveis,
+        emprestados: pRes.data.instrumentos.emprestados,
+        vencidos: pRes.data.emprestimos.vencidos
+      });
+
+      const hRes = await axios.get(`${API_BASE}/instrumentos/api/emprestimos/`);
+      const mapped = hRes.data.map(h => ({
+        id: h.id,
+        nome: h.instrumento,
+        ident: h.identificador,
+        acao: h.devolvido ? 'devolucao' : 'retirada',
+        quem: h.aluno,
+        hora: h.devolvido ? (h.data_devolucao || hoje()) : h.data_emprestimo,
+        rfid: h.rfid
+      }));
+      setHistorico(mapped.slice(0, 5));
+    } catch (err) {
+      console.log('Erro ao carregar estatísticas/histórico:', err);
+    }
+  };
+
+  useEffect(() => {
+    carregarAlunos();
+    carregarStatsEHistorico();
+  }, []);
+
+  const tagsRFIDs = ['A1B2C3D4', 'E5F6G7H8', 'I9J0K1L2', 'M3N4O5P6', 'Y5Z6A7B8', 'C9D0E1F2', 'G3H4I5J6'];
 
   const simularLeitura = () => {
     setPhase('scanning'); setFound(null); setAlunoSel(null);
-    timerRef.current = setTimeout(() => {
-      const inst = INSTRUMENTOS[Math.floor(Math.random() * INSTRUMENTOS.length)];
-      setFound(inst);
-      setPhase(inst.disponivel ? 'found_disponivel' : 'found_emprestado');
+    timerRef.current = setTimeout(async () => {
+      try {
+        const randomRfid = tagsRFIDs[Math.floor(Math.random() * tagsRFIDs.length)];
+        const axios = require('axios').default;
+        const res = await axios.get(`${API_BASE}/instrumentos/api/buscar-rfid/${randomRfid}/`);
+        setFound(res.data);
+        setPhase(res.data.disponivel ? 'found_disponivel' : 'found_emprestado');
+      } catch (err) {
+        console.log('Erro ao ler RFID:', err);
+        setPhase('idle');
+        Alert.alert('Não encontrado', 'Tag RFID simulada não foi encontrada no banco.');
+      }
     }, 2200);
   };
 
-  const registrarRetirada = () => {
+  const registrarRetirada = async () => {
     if (!alunoSel) return;
-    setHistorico(h => [{ id:Date.now(), nome:found.nome, ident:found.identificador, acao:'retirada', quem:alunoSel.nome, hora:hora(), rfid:found.rfid }, ...h]);
-    setPhase('ok_retirada');
+    try {
+      const axios = require('axios').default;
+      const res = await axios.post(`${API_BASE}/instrumentos/api/retirada/`, {
+        rfid: found.rfid,
+        aluno_id: alunoSel.id
+      }, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (res.data.sucesso) {
+        setPhase('ok_retirada');
+        carregarStatsEHistorico();
+      } else {
+        Alert.alert('Erro', res.data.erro || 'Erro ao registrar.');
+      }
+    } catch (err) {
+      Alert.alert('Erro', err.response?.data?.erro || 'Erro ao conectar ao servidor.');
+    }
   };
 
-  const registrarDevolucao = () => {
-    setHistorico(h => [{ id:Date.now(), nome:found.nome, ident:found.identificador, acao:'devolucao', quem:found.emprestado_para||'—', hora:hora(), rfid:found.rfid }, ...h]);
-    setPhase('ok_devolucao');
+  const registrarDevolucao = async () => {
+    try {
+      const axios = require('axios').default;
+      const res = await axios.post(`${API_BASE}/instrumentos/api/devolucao/`, {
+        rfid: found.rfid
+      }, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (res.data.sucesso) {
+        setPhase('ok_devolucao');
+        carregarStatsEHistorico();
+      } else {
+        Alert.alert('Erro', res.data.erro || 'Erro ao registrar.');
+      }
+    } catch (err) {
+      Alert.alert('Erro', err.response?.data?.erro || 'Erro ao conectar ao servidor.');
+    }
   };
 
   const reset = () => { clearTimeout(timerRef.current); setPhase('idle'); setFound(null); setAlunoSel(null); };
@@ -167,9 +231,9 @@ export default function ScannerScreen() {
 
             <View style={styles.statsRow}>
               {[
-                { n:INSTRUMENTOS.filter(i=>i.disponivel).length,  l:'Disponiveis', c:C.green, bg:C.greenBg },
-                { n:INSTRUMENTOS.filter(i=>!i.disponivel).length, l:'Emprestados', c:C.blue,  bg:C.blueBg  },
-                { n:2,                                             l:'Vencidos',   c:C.red,   bg:C.redBg   },
+                { n:stats.disponiveis,  l:'Disponiveis', c:C.green, bg:C.greenBg },
+                { n:stats.emprestados,  l:'Emprestados', c:C.blue,  bg:C.blueBg  },
+                { n:stats.vencidos,     l:'Vencidos',   c:C.red,   bg:C.redBg   },
               ].map(s => (
                 <View key={s.l} style={[styles.statCard, { backgroundColor:s.bg }]}>
                   <Text style={[styles.statN, { color:s.c }]}>{s.n}</Text>
@@ -178,22 +242,28 @@ export default function ScannerScreen() {
               ))}
             </View>
 
-            <SectionTitle text="Movimentacoes de hoje" />
-            {historico.map(h => (
-              <View key={h.id} style={styles.histItem}>
-                <View style={[styles.histIcon, { backgroundColor: h.acao==='retirada' ? C.blueBg : C.greenBg }]}>
-                  <Text style={{ fontSize:16 }}>{h.acao==='retirada' ? '[S]' : '[E]'}</Text>
+            <SectionTitle text="Movimentacoes Recentes" />
+            {historico.length > 0 ? (
+              historico.map(h => (
+                <View key={h.id} style={styles.histItem}>
+                  <View style={[styles.histIcon, { backgroundColor: h.acao==='retirada' ? C.blueBg : C.greenBg }]}>
+                    <Text style={{ fontSize:16, color: h.acao==='retirada' ? C.blue : C.green }}>{h.acao==='retirada' ? '↗' : '↙'}</Text>
+                  </View>
+                  <View style={styles.histInfo}>
+                    <Text style={styles.histNome}>{h.nome}</Text>
+                    <Text style={styles.histSub}>{h.quem} · {h.hora}</Text>
+                    <Text style={styles.histRfid}>{h.ident} · {h.rfid}</Text>
+                  </View>
+                  <Pill label={h.acao==='retirada' ? 'Saida' : 'Entrada'}
+                    bg={h.acao==='retirada' ? C.blueBg : C.greenBg}
+                    color={h.acao==='retirada' ? C.blue : C.green} />
                 </View>
-                <View style={styles.histInfo}>
-                  <Text style={styles.histNome}>{h.nome}</Text>
-                  <Text style={styles.histSub}>{h.quem} · {h.hora}</Text>
-                  <Text style={styles.histRfid}>{h.ident} · {h.rfid}</Text>
-                </View>
-                <Pill label={h.acao==='retirada' ? 'Saida' : 'Entrada'}
-                  bg={h.acao==='retirada' ? C.blueBg : C.greenBg}
-                  color={h.acao==='retirada' ? C.blue : C.green} />
+              ))
+            ) : (
+              <View style={{ alignItems:'center', padding:20 }}>
+                <Text style={{ fontSize:12, color:C.mute }}>Nenhuma movimentação hoje.</Text>
               </View>
-            ))}
+            )}
           </>
         )}
 
@@ -267,7 +337,7 @@ export default function ScannerScreen() {
               </View>
               {found.emprestado_para && (
                 <View style={styles.alunoBox}>
-                  <Text style={{ fontSize:16 }}>U</Text>
+                  <Text style={{ fontSize:16 }}>👤</Text>
                   <View>
                     <Text style={styles.alunoBoxLabel}>Em posse de</Text>
                     <Text style={styles.alunoBoxName}>{found.emprestado_para}</Text>
@@ -286,7 +356,7 @@ export default function ScannerScreen() {
 
         {phase === 'confirm_retirada' && found && (
           <View style={styles.centerBlock}>
-            <Text style={{ fontSize:48, marginBottom:16 }}>[ ]</Text>
+            <Text style={{ fontSize:48, marginBottom:16 }}>📖</Text>
             <Text style={styles.phaseTitle}>Confirmar Retirada?</Text>
             <View style={[styles.card, { width:'100%', marginTop:16 }]}>
               <InfoRow label="Instrumento" value={found.nome} />
@@ -308,7 +378,7 @@ export default function ScannerScreen() {
 
         {phase === 'confirm_devolucao' && found && (
           <View style={styles.centerBlock}>
-            <Text style={{ fontSize:48, marginBottom:16 }}>←</Text>
+            <Text style={{ fontSize:48, marginBottom:16 }}>↩</Text>
             <Text style={styles.phaseTitle}>Confirmar Devolucao?</Text>
             <View style={[styles.card, { width:'100%', marginTop:16 }]}>
               <InfoRow label="Instrumento" value={found.nome} />
@@ -375,7 +445,7 @@ export default function ScannerScreen() {
             <View style={styles.modalHandle} />
             <Text style={styles.modalTitle}>Selecionar Aluno</Text>
             <ScrollView showsVerticalScrollIndicator={false}>
-              {ALUNOS.map(a => (
+              {alunos.map(a => (
                 <TouchableOpacity key={a.id} style={[styles.alunoOption, alunoSel?.id===a.id && styles.alunoOptionActive]}
                   onPress={() => { setAlunoSel(a); setAlunoModal(false); }}>
                   <View style={styles.alunoAvatar}>
@@ -385,7 +455,7 @@ export default function ScannerScreen() {
                     <Text style={styles.alunoOptionName}>{a.nome}</Text>
                     <Text style={styles.alunoOptionMat}>Matricula: {a.matricula}</Text>
                   </View>
-                  {alunoSel?.id===a.id && <Text style={{ marginLeft:'auto', color:C.gold, fontSize:18 }}>v</Text>}
+                  {alunoSel?.id===a.id && <Text style={{ marginLeft:'auto', color:C.gold, fontSize:18 }}>✓</Text>}
                 </TouchableOpacity>
               ))}
             </ScrollView>

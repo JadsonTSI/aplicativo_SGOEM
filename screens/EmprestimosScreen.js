@@ -1,11 +1,12 @@
 // screens/EmprestimosScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-  StyleSheet, StatusBar, Modal, Alert,
+  StyleSheet, StatusBar, Modal, Alert, ActivityIndicator,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_BASE } from '../apiConfig';
 
 const C = {
   gold:'#C9A84C', goldL:'#E8C96A', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -19,14 +20,6 @@ const C = {
 
 const hoje = () => new Date().toLocaleDateString('pt-BR');
 
-const EMPRESTIMOS_INIT = [
-  { id:1, instrumento:'Clarinete Jupiter 631',      identificador:'INS-0002', aluno:'Ana Silva',    matricula:'2024001', data_emprestimo:'25/04/2026', data_devolucao:null,         devolvido:false, dias_atraso:5  },
-  { id:2, instrumento:'Saxofone Alto Yamaha',        identificador:'INS-0006', aluno:'Carlos Lima',  matricula:'2024002', data_emprestimo:'01/05/2026', data_devolucao:null,         devolvido:false, dias_atraso:0  },
-  { id:3, instrumento:'Viola Stentor Student',       identificador:'INS-0007', aluno:'Maria Costa',  matricula:'2024003', data_emprestimo:'03/05/2026', data_devolucao:null,         devolvido:false, dias_atraso:0  },
-  { id:4, instrumento:'Violino Yamaha V5',           identificador:'INS-0001', aluno:'Pedro Alves',  matricula:'2024004', data_emprestimo:'10/04/2026', data_devolucao:'24/04/2026', devolvido:true,  dias_atraso:0  },
-  { id:5, instrumento:'Flauta Pearl 525',            identificador:'INS-0004', aluno:'Sofia Rocha',  matricula:'2024005', data_emprestimo:'20/04/2026', data_devolucao:'04/05/2026', devolvido:true,  dias_atraso:0  },
-];
-
 const Pill = ({ label, bg, color }) => (
   <View style={{ backgroundColor:bg, paddingHorizontal:10, paddingVertical:3,
     borderRadius:20, alignSelf:'flex-start' }}>
@@ -37,13 +30,55 @@ const Pill = ({ label, bg, color }) => (
 // ── MODAL DEVOLUÇÃO COM RFID ──────────────────────────────────────────────────
 const DevolucaoModal = ({ emp, onClose, onConfirm }) => {
   const [fase, setFase] = useState('info'); // info | rfid | ok
+  const [error, setError] = useState('');
 
-  const simularRFID = () => {
+  const simularRFID = async () => {
     setFase('rfid');
-    setTimeout(() => {
-      onConfirm(emp.id);
-      setFase('ok');
+    setError('');
+    
+    // Simular a leitura do RFID aguardando 2 segundos
+    setTimeout(async () => {
+      try {
+        const axios = require('axios').default;
+        const res = await axios.post(`${API_BASE}/instrumentos/api/devolucao/`, {
+          rfid: emp.rfid,
+        }, {
+          headers: { 'Content-Type': 'application/json' }
+        });
+
+        if (res.data.sucesso) {
+          setFase('ok');
+          onConfirm();
+        } else {
+          setError(res.data.erro || 'Erro desconhecido ao devolver.');
+          setFase('info');
+        }
+      } catch (err) {
+        setError(err.response?.data?.erro || 'Erro de rede ou servidor.');
+        setFase('info');
+      }
     }, 2000);
+  };
+
+  const devolverManualmente = async () => {
+    setError('');
+    try {
+      const axios = require('axios').default;
+      const res = await axios.post(`${API_BASE}/instrumentos/api/devolucao/`, {
+        rfid: emp.rfid,
+      }, {
+        headers: { 'Content-Type': 'application/json' }
+      });
+
+      if (res.data.sucesso) {
+        setFase('ok');
+        onConfirm();
+      } else {
+        Alert.alert('Erro', res.data.erro || 'Erro ao registrar devolução.');
+      }
+    } catch (err) {
+      Alert.alert('Erro', err.response?.data?.erro || 'Erro ao conectar ao servidor.');
+    }
   };
 
   return (
@@ -64,11 +99,17 @@ const DevolucaoModal = ({ emp, onClose, onConfirm }) => {
                 Registrar Devolução
               </Text>
 
+              {error !== '' && (
+                <View style={{ backgroundColor:C.redBg, borderWidth:1, borderColor:C.red+'44', borderRadius:10, padding:10, marginBottom:10 }}>
+                  <Text style={{ color:C.red, fontSize:12, fontWeight:'600' }}>{error}</Text>
+                </View>
+              )}
+
               <View style={{ backgroundColor:C.surf, borderRadius:12, padding:12, marginBottom:14 }}>
                 <Text style={{ fontSize:11, color:C.mute, marginBottom:3 }}>Instrumento</Text>
                 <Text style={{ fontSize:15, fontWeight:'800', color:C.ink }}>{emp.instrumento}</Text>
                 <Text style={{ fontSize:11, color:C.gold, fontFamily:'monospace', marginTop:2 }}>
-                  {emp.identificador}
+                  {emp.identificador} (RFID: {emp.rfid || 'Sem RFID'})
                 </Text>
                 <Text style={{ fontSize:11, color:C.mute, marginTop:4 }}>
                   Aluno: <Text style={{ fontWeight:'700', color:C.ink }}>{emp.aluno}</Text>
@@ -97,7 +138,7 @@ const DevolucaoModal = ({ emp, onClose, onConfirm }) => {
                   📡  Confirmar via RFID
                 </Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => { onConfirm(emp.id); onClose(); }}
+              <TouchableOpacity onPress={devolverManualmente}
                 style={{ backgroundColor:C.surf, borderWidth:1, borderColor:C.line,
                   borderRadius:12, padding:13, alignItems:'center', marginBottom:8 }}>
                 <Text style={{ fontSize:13, color:C.mute }}>Registrar manualmente</Text>
@@ -150,15 +191,26 @@ const DevolucaoModal = ({ emp, onClose, onConfirm }) => {
 
 // ── TELA PRINCIPAL ────────────────────────────────────────────────────────────
 export default function EmprestimosScreen() {
-  const [dados,    setDados]    = useState(EMPRESTIMOS_INIT);
+  const [dados,    setDados]    = useState([]);
   const [filtro,   setFiltro]   = useState('ativos');
   const [devModal, setDevModal] = useState(null);
+  const [loading,  setLoading]  = useState(true);
 
-  const devolver = (id) => {
-    setDados(d => d.map(e => e.id===id
-      ? { ...e, devolvido:true, data_devolucao:hoje(), dias_atraso:0 }
-      : e));
+  const carregarEmprestimos = async () => {
+    try {
+      const axios = require('axios').default;
+      const res = await axios.get(`${API_BASE}/instrumentos/api/emprestimos/`);
+      setDados(res.data);
+    } catch (err) {
+      console.log('Erro ao buscar empréstimos:', err);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  useEffect(() => {
+    carregarEmprestimos();
+  }, []);
 
   const filtered = dados.filter(e =>
     filtro==='ativos'     ? !e.devolvido && e.dias_atraso===0 :
@@ -172,6 +224,15 @@ export default function EmprestimosScreen() {
 
   const TABS = [['ativos','Ativos'],['vencidos','Vencidos'],
                 ['devolvidos','Devolvidos'],['todos','Todos']];
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex:1, backgroundColor:C.ink, justifyContent:'center', alignItems:'center' }}>
+        <StatusBar barStyle="light-content" backgroundColor={C.ink} />
+        <ActivityIndicator size="large" color={C.gold} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex:1, backgroundColor:C.ink }}>
@@ -295,7 +356,7 @@ export default function EmprestimosScreen() {
                 🎵 {e.instrumento}
               </Text>
               <Text style={{ fontSize:10, color:C.gold, fontFamily:'monospace',
-                marginBottom:10 }}>{e.identificador}</Text>
+                marginBottom:10 }}>{e.identificador} (RFID: {e.rfid || 'Sem RFID'})</Text>
 
               {/* Datas */}
               <View style={{ flexDirection:'row', gap:12, marginBottom:10 }}>
@@ -308,7 +369,7 @@ export default function EmprestimosScreen() {
                 <View style={{ flex:1, backgroundColor: e.dias_atraso>0 ? C.redBg : C.surf,
                   borderRadius:8, padding:8 }}>
                   <Text style={{ fontSize:10, color: e.dias_atraso>0 ? C.red : C.mute }}>
-                    {e.devolvido ? '✅ Devolvido' : '📅 Devolução'}
+                    {e.devolvido ? '✅ Devolvido' : '📅 Prazo'}
                   </Text>
                   <Text style={{ fontSize:12, fontWeight:'700',
                     color: e.dias_atraso>0 ? C.red : C.ink, marginTop:2 }}>
@@ -348,7 +409,7 @@ export default function EmprestimosScreen() {
         <DevolucaoModal
           emp={devModal}
           onClose={() => setDevModal(null)}
-          onConfirm={(id) => { devolver(id); }}
+          onConfirm={() => { carregarEmprestimos(); }}
         />
       )}
     </SafeAreaView>

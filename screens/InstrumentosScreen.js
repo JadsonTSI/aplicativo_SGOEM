@@ -1,10 +1,11 @@
 // screens/InstrumentosScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView, TextInput,
-  StatusBar, Modal,
+  StatusBar, Modal, ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_BASE } from '../apiConfig';
 
 const C = {
   gold:'#C9A84C', goldL:'#E8C96A', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -14,25 +15,6 @@ const C = {
   red:'#C0392B',   redBg:'#FDECEA',
   blue:'#1A5FAB',  blueBg:'#EAF1FB',
   amber:'#B8620A', amberBg:'#FDF3E3',
-};
-
-const INSTRUMENTOS = [
-  { id:1,  identificador:'INS-0001', nome:'Violino Yamaha V5',          naipe:'Cordas',   rfid:'A1B2C3D4', disponivel:true,  ativo:true,  pertence_associacao:true, emprestado_para:null,          condicao:'otimo'   },
-  { id:2,  identificador:'INS-0002', nome:'Clarinete Jupiter 631',      naipe:'Madeiras', rfid:'E5F6G7H8', disponivel:false, ativo:true,  pertence_associacao:true, emprestado_para:'Ana Silva',   condicao:'bom'     },
-  { id:3,  identificador:'INS-0003', nome:'Trompete Bach',              naipe:'Metais',   rfid:'I9J0K1L2', disponivel:true,  ativo:true,  pertence_associacao:true, emprestado_para:null,          condicao:'regular' },
-  { id:4,  identificador:'INS-0004', nome:'Flauta Pearl 525',           naipe:'Madeiras', rfid:'M3N4O5P6', disponivel:true,  ativo:true,  pertence_associacao:true, emprestado_para:null,          condicao:'otimo'   },
-  { id:5,  identificador:'INS-0005', nome:'Caixa Pearl Export',         naipe:'Percussao',rfid:'Q7R8S9T0', disponivel:true,  ativo:true,  pertence_associacao:true, emprestado_para:null,          condicao:'bom'     },
-  { id:6,  identificador:'INS-0006', nome:'Saxofone Alto Yamaha',       naipe:'Madeiras', rfid:'Y5Z6A7B8', disponivel:false, ativo:true,  pertence_associacao:true, emprestado_para:'Carlos Lima', condicao:'otimo'   },
-  { id:7,  identificador:'INS-0007', nome:'Viola Stentor Student',      naipe:'Cordas',   rfid:'C9D0E1F2', disponivel:false, ativo:true,  pertence_associacao:true, emprestado_para:'Maria Costa', condicao:'bom'     },
-  { id:8,  identificador:'INS-0008', nome:'Oboe Yamaha YOB-431',        naipe:'Madeiras', rfid:'G3H4I5J6', disponivel:true,  ativo:true,  pertence_associacao:true, emprestado_para:null,          condicao:'otimo'   },
-  { id:9,  identificador:'INS-0009', nome:'Tuba Cerveny',               naipe:'Metais',   rfid:'K7L8M9N0', disponivel:true,  ativo:false, pertence_associacao:true, emprestado_para:null,          condicao:'ruim'    },
-  { id:10, identificador:'INS-0010', nome:'Bumbo Pearl',                naipe:'Percussao',rfid:'S5T6U7V8', disponivel:true,  ativo:true,  pertence_associacao:true, emprestado_para:null,          condicao:'otimo'   },
-];
-
-const HISTORICO = {
-  'INS-0001':[ { acao:'Retirada', aluno:'Pedro Alves', data:'10/04/2026' }, { acao:'Devolucao', aluno:'Pedro Alves', data:'24/04/2026' } ],
-  'INS-0002':[ { acao:'Retirada', aluno:'Ana Silva',   data:'25/04/2026' } ],
-  'INS-0006':[ { acao:'Retirada', aluno:'Carlos Lima', data:'01/05/2026' } ],
 };
 
 const statusCfg = {
@@ -65,8 +47,7 @@ const InfoRow = ({ label, value }) => (
 const DetalheModal = ({ inst, onClose }) => {
   if (!inst) return null;
   const st   = statusCfg[getStatus(inst)];
-  const cc   = condicaoCfg[inst.condicao];
-  const hist = HISTORICO[inst.identificador] || [];
+  const cc   = condicaoCfg[inst.condicao] || condicaoCfg.otimo;
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex:1, backgroundColor:C.surf }} edges={['top']}>
@@ -90,7 +71,7 @@ const DetalheModal = ({ inst, onClose }) => {
         <ScrollView contentContainerStyle={{ padding:16, paddingBottom:40 }}>
           <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14, marginBottom:12 }}>
             <Text style={{ fontSize:10, color:C.gold, fontWeight:'700', letterSpacing:1, textTransform:'uppercase', marginBottom:6 }}>Tag RFID</Text>
-            <Text style={{ fontSize:20, fontFamily:'monospace', fontWeight:'900', color:C.ink, letterSpacing:2 }}>{inst.rfid}</Text>
+            <Text style={{ fontSize:20, fontFamily:'monospace', fontWeight:'900', color:C.ink, letterSpacing:2 }}>{inst.rfid || 'SEM TAG'}</Text>
             <Text style={{ fontSize:11, color:C.mute, marginTop:6, lineHeight:16 }}>Lida pelo ESP32+RC522 no deposito.</Text>
           </View>
           {!inst.disponivel && inst.emprestado_para && (
@@ -109,28 +90,6 @@ const DetalheModal = ({ inst, onClose }) => {
             <InfoRow label="Ativo" value={inst.ativo ? 'Sim' : 'Nao'} />
             <InfoRow label="Pertence a associacao" value={inst.pertence_associacao ? 'Sim' : 'Nao'} />
           </View>
-          <Text style={{ fontSize:10, color:C.mute, fontWeight:'700', letterSpacing:1, textTransform:'uppercase', marginBottom:8 }}>Historico</Text>
-          {hist.length === 0
-            ? <Text style={{ fontSize:12, color:C.mute, marginBottom:14 }}>Nenhum emprestimo registrado.</Text>
-            : hist.map((h, i) => (
-              <View key={i} style={{ flexDirection:'row', gap:10, marginBottom:10 }}>
-                <View style={{ width:7, height:7, borderRadius:4, backgroundColor: i===0 ? C.gold : C.line, marginTop:5, flexShrink:0 }} />
-                <View>
-                  <Text style={{ fontSize:13, fontWeight:'700', color:C.ink }}>{h.acao}</Text>
-                  <Text style={{ fontSize:11, color:C.mute }}>{h.aluno} · {h.data}</Text>
-                </View>
-              </View>
-            ))
-          }
-          <TouchableOpacity style={{ backgroundColor:C.gold, borderRadius:12, padding:13, alignItems:'center', marginBottom:8 }}>
-            <Text style={{ fontSize:13, fontWeight:'800', color:C.ink }}>Registrar Movimentacao via RFID</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={{ backgroundColor:C.amberBg, borderWidth:1, borderColor:C.amber+'44', borderRadius:12, padding:13, alignItems:'center', marginBottom:8 }}>
-            <Text style={{ fontSize:13, fontWeight:'700', color:C.amber }}>Enviar para Manutencao</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={{ backgroundColor:C.surf, borderWidth:1, borderColor:C.line, borderRadius:12, padding:13, alignItems:'center' }}>
-            <Text style={{ fontSize:13, color:C.mute }}>Editar Cadastro</Text>
-          </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -141,8 +100,26 @@ export default function InstrumentosScreen() {
   const [filtro,  setFiltro]  = useState('todos');
   const [busca,   setBusca]   = useState('');
   const [detalhe, setDetalhe] = useState(null);
+  const [instrumentos, setInstrumentos] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = INSTRUMENTOS.filter(i => {
+  const carregarInstrumentos = async () => {
+    try {
+      const axios = require('axios').default;
+      const res = await axios.get(`${API_BASE}/instrumentos/api/listar/`);
+      setInstrumentos(res.data);
+    } catch (err) {
+      console.log('Erro ao carregar instrumentos:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarInstrumentos();
+  }, []);
+
+  const filtered = instrumentos.filter(i => {
     const st  = getStatus(i);
     const okF = filtro==='todos' ? true : st===filtro;
     const okB = !busca
@@ -158,22 +135,31 @@ export default function InstrumentosScreen() {
     { v:'inativo',    l:'Inativos'    },
   ];
 
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex:1, backgroundColor:C.ink, justifyContent:'center', alignItems:'center' }}>
+        <StatusBar barStyle="light-content" backgroundColor={C.ink} />
+        <ActivityIndicator size="large" color={C.gold} />
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={{ flex:1, backgroundColor:C.ink }} edges={['top']}>
       <StatusBar barStyle="light-content" backgroundColor={C.ink} />
       <View style={{ backgroundColor:C.ink, padding:16, paddingTop:12, borderBottomWidth:2, borderBottomColor:C.gold }}>
         <Text style={{ fontSize:9, color:C.gold, letterSpacing:2, fontWeight:'800', textTransform:'uppercase', marginBottom:2 }}>ABANFAR BF</Text>
         <Text style={{ fontSize:18, fontWeight:'900', color:'#fff' }}>Estoque</Text>
-        <Text style={{ fontSize:11, color:'#6A6058', marginTop:2 }}>{INSTRUMENTOS.filter(i=>i.ativo).length} instrumentos ativos</Text>
+        <Text style={{ fontSize:11, color:'#6A6058', marginTop:2 }}>{instrumentos.filter(i=>i.ativo).length} instrumentos ativos</Text>
       </View>
 
       <View style={{ flex:1, backgroundColor:C.surf }}>
         <View style={{ flexDirection:'row', gap:8, padding:16, paddingBottom:8 }}>
           {[
-            { n:INSTRUMENTOS.length,                                   l:'Total',       c:C.gold  },
-            { n:INSTRUMENTOS.filter(i=>i.disponivel&&i.ativo).length,  l:'Disponiveis', c:C.green },
-            { n:INSTRUMENTOS.filter(i=>!i.disponivel&&i.ativo).length, l:'Emprestados', c:C.blue  },
-            { n:INSTRUMENTOS.filter(i=>!i.ativo).length,               l:'Inativos',    c:C.mute  },
+            { n:instrumentos.length,                                   l:'Total',       c:C.gold  },
+            { n:instrumentos.filter(i=>i.disponivel&&i.ativo).length,  l:'Disponiveis', c:C.green },
+            { n:instrumentos.filter(i=>!i.disponivel&&i.ativo).length, l:'Emprestados', c:C.blue  },
+            { n:instrumentos.filter(i=>!i.ativo).length,               l:'Inativos',    c:C.mute  },
           ].map(s => (
             <View key={s.l} style={{ flex:1, backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:10, padding:8, alignItems:'center' }}>
               <Text style={{ fontSize:18, fontWeight:'900', color:s.c }}>{s.n}</Text>
@@ -208,7 +194,7 @@ export default function InstrumentosScreen() {
           <Text style={{ fontSize:11, color:C.mute, marginBottom:10 }}>{filtered.length} resultado{filtered.length!==1?'s':''}</Text>
           {filtered.map(inst => {
             const st = statusCfg[getStatus(inst)];
-            const cc = condicaoCfg[inst.condicao];
+            const cc = condicaoCfg[inst.condicao] || condicaoCfg.otimo;
             return (
               <TouchableOpacity key={inst.id} onPress={() => setDetalhe(inst)}
                 style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:13, marginBottom:8, borderLeftWidth:3, borderLeftColor:st.bar }}>
@@ -226,7 +212,7 @@ export default function InstrumentosScreen() {
                   </View>
                 )}
                 <View style={{ flexDirection:'row', justifyContent:'space-between', alignItems:'center' }}>
-                  <Text style={{ fontSize:10, color:C.mute, fontFamily:'monospace' }}>{inst.rfid}</Text>
+                  <Text style={{ fontSize:10, color:C.mute, fontFamily:'monospace' }}>{inst.rfid || 'SEM TAG'}</Text>
                   <View style={{ backgroundColor:cc.color+'18', paddingHorizontal:8, paddingVertical:2, borderRadius:10 }}>
                     <Text style={{ fontSize:10, color:cc.color, fontWeight:'700' }}>{cc.label}</Text>
                   </View>

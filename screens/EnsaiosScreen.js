@@ -1,11 +1,12 @@
 // screens/EnsaiosScreen.js
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View, Text, TouchableOpacity, ScrollView,
-   StatusBar, Modal,
+  StatusBar, Modal, ActivityIndicator,
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { API_BASE } from '../apiConfig';
 
 const C = {
   gold:'#C9A84C', goldL:'#E8C96A', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -17,27 +18,11 @@ const C = {
   amber:'#B8620A', amberBg:'#FDF3E3',
 };
 
-// EnsaiosproModel real
-const ENSAIOS = [
-  { id:1, nome:'Banda Musical',      dia_semana:'Quinta-feira', data:'2026-05-15', inicio:'19:00', fim:'21:00', local:'Sala 1', cancelado:false },
-  { id:2, nome:'Orquestra Flautas',  dia_semana:'Quinta-feira', data:'2026-05-15', inicio:'20:30', fim:'22:00', local:'Sala 2', cancelado:false },
-  { id:3, nome:'Cordas',             dia_semana:'Sexta-feira',  data:'2026-05-16', inicio:'18:00', fim:'20:00', local:'Sala 3', cancelado:false },
-  { id:4, nome:'Base',               dia_semana:'Sábado',       data:'2026-05-17', inicio:'09:00', fim:'11:00', local:'Sala 1', cancelado:false },
-  { id:5, nome:'Metais',             dia_semana:'Sábado',       data:'2026-05-17', inicio:'14:00', fim:'16:00', local:'Sala 2', cancelado:true  },
-  { id:6, nome:'Percussão',          dia_semana:'Domingo',      data:'2026-05-18', inicio:'10:00', fim:'12:00', local:'Sala 3', cancelado:false },
-];
-
-const ALUNOS_POR_GRUPO = {
-  'Banda Musical':     [{ nome:'Ana Silva', matricula:'2024001' },{ nome:'Pedro Alves', matricula:'2024004' },{ nome:'Beatriz Santos', matricula:'2024007' }],
-  'Orquestra Flautas': [{ nome:'Sofia Rocha', matricula:'2024005' }],
-  'Cordas':            [{ nome:'Carlos Lima', matricula:'2024002' },{ nome:'Maria Costa', matricula:'2024003' }],
-  'Base':              [{ nome:'Lucas Mendes', matricula:'2024006' }],
-  'Metais':            [],
-  'Percussão':         [],
-};
-
 const formatarData = (d) => {
-  const [y,m,day] = d.split('-');
+  if (!d) return '';
+  const parts = d.split('-');
+  if (parts.length !== 3) return d;
+  const [y,m,day] = parts;
   return `${day}/${m}/${y}`;
 };
 
@@ -50,7 +35,7 @@ const Pill = ({ label, bg, color }) => (
 
 // ── DETALHE ENSAIO ────────────────────────────────────────────────────────────
 const EnsaioDetalhe = ({ ensaio, onClose }) => {
-  const alunos = ALUNOS_POR_GRUPO[ensaio.nome] || [];
+  const alunos = ensaio.alunos || [];
   return (
     <Modal visible animationType="slide" presentationStyle="pageSheet">
       <SafeAreaView style={{ flex:1, backgroundColor:C.surf }}>
@@ -138,20 +123,6 @@ const EnsaioDetalhe = ({ ensaio, onClose }) => {
               </View>
             ))
           )}
-
-          {/* Ações */}
-          {!ensaio.cancelado && (
-            <TouchableOpacity style={{ backgroundColor:C.gold, borderRadius:12,
-              padding:13, alignItems:'center', marginTop:16, marginBottom:8 }}>
-              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink }}>
-                ✓  Registrar Presença
-              </Text>
-            </TouchableOpacity>
-          )}
-          <TouchableOpacity style={{ backgroundColor:C.surf, borderWidth:1,
-            borderColor:C.line, borderRadius:12, padding:13, alignItems:'center' }}>
-            <Text style={{ fontSize:13, color:C.mute }}>✏️  Editar Ensaio</Text>
-          </TouchableOpacity>
         </ScrollView>
       </SafeAreaView>
     </Modal>
@@ -162,8 +133,26 @@ const EnsaioDetalhe = ({ ensaio, onClose }) => {
 export default function EnsaiosScreen() {
   const [filtro,  setFiltro]  = useState('ativos');
   const [detalhe, setDetalhe] = useState(null);
+  const [ensaios, setEnsaios] = useState([]);
+  const [loading, setLoading] = useState(true);
 
-  const filtered = ENSAIOS.filter(e =>
+  const carregarEnsaios = async () => {
+    try {
+      const axios = require('axios').default;
+      const res = await axios.get(`${API_BASE}/professores/api/ensaios/`);
+      setEnsaios(res.data);
+    } catch (err) {
+      console.log('Erro ao carregar ensaios:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    carregarEnsaios();
+  }, []);
+
+  const filtered = ensaios.filter(e =>
     filtro === 'ativos'     ? !e.cancelado :
     filtro === 'cancelados' ? e.cancelado  : true
   );
@@ -175,6 +164,15 @@ export default function EnsaiosScreen() {
     acc[key].push(e);
     return acc;
   }, {});
+
+  if (loading) {
+    return (
+      <SafeAreaView style={{ flex:1, backgroundColor:C.ink, justifyContent:'center', alignItems:'center' }}>
+        <StatusBar barStyle="light-content" backgroundColor={C.ink} />
+        <ActivityIndicator size="large" color={C.gold} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={{ flex:1, backgroundColor:C.ink }}>
@@ -193,9 +191,9 @@ export default function EnsaiosScreen() {
         {/* Stats */}
         <View style={{ flexDirection:'row', gap:8, padding:16, paddingBottom:8 }}>
           {[
-            { n:ENSAIOS.filter(e=>!e.cancelado).length, l:'Ativos',     c:C.green, bg:C.greenBg },
-            { n:ENSAIOS.filter(e=>e.cancelado).length,  l:'Cancelados', c:C.red,   bg:C.redBg   },
-            { n:ENSAIOS.length,                          l:'Total',      c:C.gold,  bg:C.goldPale},
+            { n:ensaios.filter(e=>!e.cancelado).length, l:'Ativos',     c:C.green, bg:C.greenBg },
+            { n:ensaios.filter(e=>e.cancelado).length,  l:'Cancelados', c:C.red,   bg:C.redBg   },
+            { n:ensaios.length,                          l:'Total',      c:C.gold,  bg:C.goldPale},
           ].map(s => (
             <View key={s.l} style={{ flex:1, backgroundColor:s.bg, borderRadius:12,
               padding:10, alignItems:'center' }}>
@@ -224,7 +222,7 @@ export default function EnsaiosScreen() {
         {/* Lista agrupada por data */}
         <ScrollView contentContainerStyle={{ padding:16, paddingTop:4, paddingBottom:100 }}
           showsVerticalScrollIndicator={false}>
-          {Object.entries(porData).map(([data, ensaios]) => (
+          {Object.entries(porData).map(([data, ensaiosData]) => (
             <View key={data}>
               {/* Separador de data */}
               <View style={{ flexDirection:'row', alignItems:'center', gap:8, marginBottom:8 }}>
@@ -237,7 +235,7 @@ export default function EnsaiosScreen() {
                 <View style={{ flex:1, height:1, backgroundColor:C.line }} />
               </View>
 
-              {ensaios.map(e => (
+              {ensaiosData.map(e => (
                 <TouchableOpacity key={e.id} onPress={() => setDetalhe(e)}
                   style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line,
                     borderRadius:14, padding:13, marginBottom:10,
@@ -281,7 +279,7 @@ export default function EnsaiosScreen() {
                   {/* Alunos esperados */}
                   <View style={{ marginTop:10, flexDirection:'row', alignItems:'center', gap:6 }}>
                     <View style={{ flexDirection:'row' }}>
-                      {(ALUNOS_POR_GRUPO[e.nome]||[]).slice(0,4).map((a, i) => (
+                      {(e.alunos||[]).slice(0,4).map((a, i) => (
                         <View key={i} style={{ width:24, height:24, borderRadius:12,
                           backgroundColor:C.goldPale, borderWidth:1.5, borderColor:C.gold,
                           marginLeft: i>0 ? -6 : 0, alignItems:'center',
@@ -293,7 +291,7 @@ export default function EnsaiosScreen() {
                       ))}
                     </View>
                     <Text style={{ fontSize:11, color:C.mute }}>
-                      {(ALUNOS_POR_GRUPO[e.nome]||[]).length} aluno{(ALUNOS_POR_GRUPO[e.nome]||[]).length!==1?'s':''}
+                      {(e.alunos||[]).length} aluno{(e.alunos||[]).length!==1?'s':''}
                     </Text>
                     <Text style={{ marginLeft:'auto', fontSize:11, color:C.mute }}>
                       Ver detalhes →
