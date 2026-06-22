@@ -7,6 +7,7 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE } from '../apiConfig';
+import axios from 'axios';
 
 const C = {
   gold:'#C9A84C', goldL:'#E8C96A', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -138,9 +139,12 @@ export default function EnsaiosScreen() {
 
   const carregarEnsaios = async () => {
     try {
-      const axios = require('axios').default;
       const res = await axios.get(`${API_BASE}/professores/api/ensaios/`);
-      setEnsaios(res.data);
+      if (Array.isArray(res.data)) {
+        setEnsaios(res.data);
+      } else {
+        console.log('Dados de ensaios inválidos (não é array):', res.data);
+      }
     } catch (err) {
       console.log('Erro ao carregar ensaios:', err);
     } finally {

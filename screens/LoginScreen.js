@@ -8,6 +8,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { API_BASE } from '../apiConfig';
+import axios from 'axios';
 
 const C = {
   gold:'#C9A84C', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -28,8 +29,6 @@ export default function LoginScreen({ onLogin }) {
     setLoading(true);
     setErro('');
     try {
-      const axios = require('axios').default;
-
       const formData = new FormData();
       formData.append('username', username.trim().toLowerCase());
       formData.append('senha', senha);

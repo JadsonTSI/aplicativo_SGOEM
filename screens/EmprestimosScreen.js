@@ -7,6 +7,7 @@ import {
 
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE } from '../apiConfig';
+import axios from 'axios';
 
 const C = {
   gold:'#C9A84C', goldL:'#E8C96A', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -39,7 +40,6 @@ const DevolucaoModal = ({ emp, onClose, onConfirm }) => {
     // Simular a leitura do RFID aguardando 2 segundos
     setTimeout(async () => {
       try {
-        const axios = require('axios').default;
         const res = await axios.post(`${API_BASE}/instrumentos/api/devolucao/`, {
           rfid: emp.rfid,
         }, {
@@ -63,7 +63,6 @@ const DevolucaoModal = ({ emp, onClose, onConfirm }) => {
   const devolverManualmente = async () => {
     setError('');
     try {
-      const axios = require('axios').default;
       const res = await axios.post(`${API_BASE}/instrumentos/api/devolucao/`, {
         rfid: emp.rfid,
       }, {
@@ -198,9 +197,12 @@ export default function EmprestimosScreen() {
 
   const carregarEmprestimos = async () => {
     try {
-      const axios = require('axios').default;
       const res = await axios.get(`${API_BASE}/instrumentos/api/emprestimos/`);
-      setDados(res.data);
+      if (Array.isArray(res.data)) {
+        setDados(res.data);
+      } else {
+        console.log('Dados de empréstimos inválidos (não é array):', res.data);
+      }
     } catch (err) {
       console.log('Erro ao buscar empréstimos:', err);
     } finally {

@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE } from '../apiConfig';
+import axios from 'axios';
 
 const C = {
   gold: '#C9A84C', goldL: '#E8C96A', goldPale: '#F5E9C8', goldD: '#9A7A30',
@@ -91,9 +92,12 @@ export default function ScannerScreen() {
 
   const carregarAlunos = async () => {
     try {
-      const axios = require('axios').default;
       const res = await axios.get(`${API_BASE}/alunos/api/listar/`);
-      setAlunos(res.data);
+      if (Array.isArray(res.data)) {
+        setAlunos(res.data);
+      } else {
+        console.log('Dados de alunos inválidos (não é array):', res.data);
+      }
     } catch (err) {
       console.log('Erro ao buscar alunos:', err);
     }
@@ -101,25 +105,32 @@ export default function ScannerScreen() {
 
   const carregarStatsEHistorico = async () => {
     try {
-      const axios = require('axios').default;
       const pRes = await axios.get(`${API_BASE}/instrumentos/api/painel/`);
-      setStats({
-        disponiveis: pRes.data.instrumentos.disponiveis,
-        emprestados: pRes.data.instrumentos.emprestados,
-        vencidos: pRes.data.emprestimos.vencidos
-      });
+      if (pRes.data && pRes.data.instrumentos && pRes.data.emprestimos) {
+        setStats({
+          disponiveis: pRes.data.instrumentos.disponiveis || 0,
+          emprestados: pRes.data.instrumentos.emprestados || 0,
+          vencidos: pRes.data.emprestimos.vencidos || 0
+        });
+      } else {
+        console.log('Dados de painel inválidos:', pRes.data);
+      }
 
       const hRes = await axios.get(`${API_BASE}/instrumentos/api/emprestimos/`);
-      const mapped = hRes.data.map(h => ({
-        id: h.id,
-        nome: h.instrumento,
-        ident: h.identificador,
-        acao: h.devolvido ? 'devolucao' : 'retirada',
-        quem: h.aluno,
-        hora: h.devolvido ? (h.data_devolucao || hoje()) : h.data_emprestimo,
-        rfid: h.rfid
-      }));
-      setHistorico(mapped.slice(0, 5));
+      if (Array.isArray(hRes.data)) {
+        const mapped = hRes.data.map(h => ({
+          id: h.id,
+          nome: h.instrumento,
+          ident: h.identificador,
+          acao: h.devolvido ? 'devolucao' : 'retirada',
+          quem: h.aluno,
+          hora: h.devolvido ? (h.data_devolucao || hoje()) : h.data_emprestimo,
+          rfid: h.rfid
+        }));
+        setHistorico(mapped.slice(0, 5));
+      } else {
+        console.log('Dados de empréstimos inválidos (não é array):', hRes.data);
+      }
     } catch (err) {
       console.log('Erro ao carregar estatísticas/histórico:', err);
     }
@@ -137,7 +148,6 @@ export default function ScannerScreen() {
     timerRef.current = setTimeout(async () => {
       try {
         const randomRfid = tagsRFIDs[Math.floor(Math.random() * tagsRFIDs.length)];
-        const axios = require('axios').default;
         const res = await axios.get(`${API_BASE}/instrumentos/api/buscar-rfid/${randomRfid}/`);
         setFound(res.data);
         setPhase(res.data.disponivel ? 'found_disponivel' : 'found_emprestado');
@@ -152,7 +162,6 @@ export default function ScannerScreen() {
   const registrarRetirada = async () => {
     if (!alunoSel) return;
     try {
-      const axios = require('axios').default;
       const res = await axios.post(`${API_BASE}/instrumentos/api/retirada/`, {
         rfid: found.rfid,
         aluno_id: alunoSel.id
@@ -173,7 +182,6 @@ export default function ScannerScreen() {
 
   const registrarDevolucao = async () => {
     try {
-      const axios = require('axios').default;
       const res = await axios.post(`${API_BASE}/instrumentos/api/devolucao/`, {
         rfid: found.rfid
       }, {

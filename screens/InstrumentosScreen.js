@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { API_BASE } from '../apiConfig';
+import axios from 'axios';
 
 const C = {
   gold:'#C9A84C', goldL:'#E8C96A', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -105,9 +106,12 @@ export default function InstrumentosScreen() {
 
   const carregarInstrumentos = async () => {
     try {
-      const axios = require('axios').default;
       const res = await axios.get(`${API_BASE}/instrumentos/api/listar/`);
-      setInstrumentos(res.data);
+      if (Array.isArray(res.data)) {
+        setInstrumentos(res.data);
+      } else {
+        console.log('Dados de instrumentos inválidos (não é array):', res.data);
+      }
     } catch (err) {
       console.log('Erro ao carregar instrumentos:', err);
     } finally {

@@ -6,7 +6,9 @@ import {
 } from 'react-native';
 
 import { SafeAreaView } from 'react-native-safe-area-context';
+import axios from 'axios';
 import { API_BASE } from '../apiConfig';
+import { VerticalBarChart, DoughnutChart, NaipeProgressList } from '../components/Graficos';
 
 const C = {
   gold:'#C9A84C', goldL:'#E8C96A', goldPale:'#F5E9C8', goldD:'#9A7A30',
@@ -19,32 +21,16 @@ const C = {
 };
 
 const STATS_INIT = {
-  instrumentos: { total:0, disponiveis:0, emprestados:0, inativos:0, pertence_assoc:0 },
+  instrumentos: { total:0, disponiveis:0, emprestados:0, inativos:0, pertence_assoc:0, com_rfid:0, sem_rfid:0 },
   emprestimos:  { ativos:0, vencidos:0, devolvidos:0, total:0 },
   alunos:       { total:0, naipes:{} },
   ensaios:      { total:0, ativos:0, cancelados:0 },
+  condicoes:    { labels: ['Ótimo', 'Bom', 'Regular', 'Ruim'], data: [0, 0, 0, 0] },
+  atividade:    { labels: [], emprestimos: [], scans: [] },
+  grupos:       [],
+  instrumentos_naipes: [],
+  alunos_mais_emprestimos: [],
 };
-
-const MiniBarChart = ({ data, color = C.gold }) => {
-  const max = Math.max(...data.map(d => d.v), 1);
-  return (
-    <View style={{ flexDirection:'row', alignItems:'flex-end', gap:4, height:50 }}>
-      {data.map((d, i) => (
-        <View key={i} style={{ flex:1, alignItems:'center', gap:3 }}>
-          <View style={{ width:'100%', height:Math.max(4, (d.v/max)*40),
-            backgroundColor:color, borderRadius:3, opacity:i===data.length-1 ? 1 : 0.5 }} />
-          <Text style={{ fontSize:8, color:C.mute }}>{d.l}</Text>
-        </View>
-      ))}
-    </View>
-  );
-};
-
-const ProgressBar = ({ value, max, color = C.gold }) => (
-  <View style={{ height:5, backgroundColor:C.line, borderRadius:3, overflow:'hidden', marginTop:4 }}>
-    <View style={{ width:`${max > 0 ? (value/max)*100 : 0}%`, height:'100%', backgroundColor:color, borderRadius:3 }} />
-  </View>
-);
 
 const KpiCard = ({ label, value, sub, color, half }) => (
   <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line,
@@ -52,6 +38,12 @@ const KpiCard = ({ label, value, sub, color, half }) => (
     <Text style={{ fontSize:26, fontWeight:'900', color, lineHeight:28 }}>{value}</Text>
     <Text style={{ fontSize:11, color:C.mute, marginTop:3 }}>{label}</Text>
     {sub && <Text style={{ fontSize:10, color:C.mute, marginTop:1 }}>{sub}</Text>}
+  </View>
+);
+
+const ProgressBar = ({ value, max, color = C.gold }) => (
+  <View style={{ height:5, backgroundColor:C.line, borderRadius:3, overflow:'hidden', marginTop:4 }}>
+    <View style={{ width:`${max > 0 ? (value/max)*100 : 0}%`, height:'100%', backgroundColor:color, borderRadius:3 }} />
   </View>
 );
 
@@ -77,11 +69,14 @@ export default function PainelScreen({ onLogout }) {
 
   const carregarDados = async () => {
     try {
-      const axios = require('axios').default;
       const res = await axios.get(`${API_BASE}/instrumentos/api/painel/`);
-      setStats(res.data);
-      setAlertas(res.data.alertas || []);
-      setProxEnsaio(res.data.proximo_ensaio);
+      if (res.data && res.data.instrumentos && res.data.alunos && res.data.emprestimos && res.data.ensaios) {
+        setStats(res.data);
+        setAlertas(res.data.alertas || []);
+        setProxEnsaio(res.data.proximo_ensaio);
+      } else {
+        console.log('Dados do painel inválidos (resposta inesperada):', res.data);
+      }
     } catch (err) {
       console.log('Erro ao carregar dados do painel:', err);
     } finally {
@@ -168,6 +163,14 @@ export default function PainelScreen({ onLogout }) {
               <KpiCard half label="Vencidos" value={stats.emprestimos.vencidos} sub="emprestimos" color={C.red} />
             </View>
 
+            <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14, marginBottom:14 }}>
+              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:8 }}>Disponibilidade de Instrumentos</Text>
+              <DoughnutChart data={[
+                { label: 'Disponíveis', value: stats.instrumentos.disponiveis, color: C.green },
+                { label: 'Emprestados', value: stats.instrumentos.emprestados, color: C.blue },
+              ]} />
+            </View>
+
             <Text style={{ fontSize:10, color:C.mute, fontWeight:'700', letterSpacing:1, textTransform:'uppercase', marginBottom:8 }}>Alertas recentes</Text>
             {alertas.length > 0 ? (
               alertas.map(a => (
@@ -226,24 +229,45 @@ export default function PainelScreen({ onLogout }) {
             </View>
             <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14, marginBottom:14 }}>
               <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:14 }}>Disponibilidade por naipe</Text>
-              {[
-                { naipe:'Cordas',   disp:stats.instrumentos.disponiveis, total:stats.instrumentos.total, c:C.blue  },
-                { naipe:'Madeiras', disp:Math.min(stats.instrumentos.disponiveis, 2), total:Math.max(stats.instrumentos.total - 2, 2), c:C.green },
-                { naipe:'Metais',   disp:1, total:1, c:C.amber },
-                { naipe:'Percussao',disp:1, total:1, c:C.goldD },
-              ].map(n => (
-                <View key={n.naipe} style={{ marginBottom:12 }}>
-                  <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom:4 }}>
-                    <Text style={{ fontSize:13, color:C.soft }}>{n.naipe}</Text>
-                    <Text style={{ fontSize:12, color:n.c, fontWeight:'700' }}>{n.disp}/{n.total}</Text>
-                  </View>
-                  <ProgressBar value={n.disp} max={n.total} color={n.c} />
-                </View>
-              ))}
+              {stats.instrumentos_naipes && stats.instrumentos_naipes.length > 0 ? (
+                stats.instrumentos_naipes.map((n, idx) => {
+                  const cores = [C.blue, C.green, C.amber, C.goldD, C.gold, '#8E44AD', '#16A085'];
+                  const color = cores[idx % cores.length];
+                  return (
+                    <View key={n.naipe} style={{ marginBottom:12 }}>
+                      <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom:4 }}>
+                        <Text style={{ fontSize:13, color:C.soft }}>{n.naipe}</Text>
+                        <Text style={{ fontSize:12, color:color, fontWeight:'700' }}>{n.disp}/{n.total}</Text>
+                      </View>
+                      <ProgressBar value={n.disp} max={n.total} color={color} />
+                    </View>
+                  );
+                })
+              ) : (
+                <Text style={{ fontSize:12, color:C.mute, textAlign:'center', paddingVertical:10 }}>Sem dados por naipe.</Text>
+              )}
             </View>
             <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14 }}>
               <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:14 }}>Condicao do estoque</Text>
-              <MiniBarChart color={C.gold} data={[{ l:'Otimo',v:3 },{ l:'Bom',v:2 },{ l:'Regular',v:1 },{ l:'Ruim',v:1 }]} />
+              <VerticalBarChart
+                height={150}
+                color={C.green}
+                data={
+                  stats.condicoes && stats.condicoes.data
+                    ? [
+                        { l: 'Ótimo', v: stats.condicoes.data[0] },
+                        { l: 'Bom', v: stats.condicoes.data[1] },
+                        { l: 'Regular', v: stats.condicoes.data[2] },
+                        { l: 'Ruim', v: stats.condicoes.data[3] },
+                      ]
+                    : [
+                        { l: 'Ótimo', v: 0 },
+                        { l: 'Bom', v: 0 },
+                        { l: 'Regular', v: 0 },
+                        { l: 'Ruim', v: 0 },
+                      ]
+                }
+              />
             </View>
           </>
         )}
@@ -263,32 +287,67 @@ export default function PainelScreen({ onLogout }) {
               ))}
             </View>
             <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14, marginBottom:14 }}>
-              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:14 }}>Emprestimos por semana</Text>
-              <MiniBarChart color={C.blue} data={[{ l:'S1',v:2 },{ l:'S2',v:4 },{ l:'S3',v:3 },{ l:'S4',v:stats.emprestimos.total }]} />
+              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:14 }}>Empréstimos Recentes (Últimos 7 dias)</Text>
+              <VerticalBarChart
+                height={150}
+                color={C.blue}
+                data={
+                  stats.atividade && stats.atividade.labels && stats.atividade.labels.length > 0
+                    ? stats.atividade.labels.map((label, idx) => ({
+                        l: label.split('/')[0],
+                        v: stats.atividade.emprestimos[idx] || 0
+                      }))
+                    : [
+                        { l: 'Dom', v: 0 },
+                        { l: 'Seg', v: 0 },
+                        { l: 'Ter', v: 0 },
+                        { l: 'Qua', v: 0 },
+                        { l: 'Qui', v: 0 },
+                        { l: 'Sex', v: 0 },
+                        { l: 'Sáb', v: 0 },
+                      ]
+                }
+              />
+            </View>
+
+            <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14, marginBottom:14 }}>
+              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:8 }}>Etiquetas RFID no Estoque</Text>
+              <DoughnutChart
+                size={110}
+                strokeWidth={16}
+                data={[
+                  { label: 'Com Etiqueta', value: stats.instrumentos.com_rfid || 0, color: C.gold },
+                  { label: 'Sem Etiqueta', value: stats.instrumentos.sem_rfid || 0, color: C.mute },
+                ]}
+              />
             </View>
             <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14 }}>
               <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:14 }}>Alunos com mais empréstimos</Text>
-              {[
-                { nome:'Israel',   n:Math.min(stats.emprestimos.total, 2), c:C.gold },
-                { nome:'Maria', n:Math.min(stats.emprestimos.total, 1), c:C.mute },
-                { nome:'Roberto', n:0, c:C.mute },
-              ].map((a, i) => (
-                <View key={a.nome} style={{ flexDirection:'row', alignItems:'center', gap:10, marginBottom:10 }}>
-                  <View style={{ width:22, height:22, borderRadius:11,
-                    backgroundColor:i===0 ? C.goldPale : C.surf,
-                    borderWidth:i===0 ? 1.5 : 0, borderColor:C.gold,
-                    alignItems:'center', justifyContent:'center' }}>
-                    <Text style={{ fontSize:10, fontWeight:'900', color:i===0 ? C.goldD : C.mute }}>#{i+1}</Text>
-                  </View>
-                  <View style={{ flex:1 }}>
-                    <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom:3 }}>
-                      <Text style={{ fontSize:13, color:C.ink, fontWeight:'700' }}>{a.nome}</Text>
-                      <Text style={{ fontSize:12, color:a.c, fontWeight:'800' }}>{a.n}</Text>
+              {stats.alunos_mais_emprestimos && stats.alunos_mais_emprestimos.length > 0 ? (
+                stats.alunos_mais_emprestimos.map((a, i) => {
+                  const maxVal = Math.max(...stats.alunos_mais_emprestimos.map(x => x.total), 1);
+                  const color = i === 0 ? C.gold : C.mute;
+                  return (
+                    <View key={a.nome} style={{ flexDirection:'row', alignItems:'center', gap:10, marginBottom:10 }}>
+                      <View style={{ width:22, height:22, borderRadius:11,
+                        backgroundColor:i===0 ? C.goldPale : C.surf,
+                        borderWidth:i===0 ? 1.5 : 0, borderColor:C.gold,
+                        alignItems:'center', justifyContent:'center' }}>
+                        <Text style={{ fontSize:10, fontWeight:'900', color:i===0 ? C.goldD : C.mute }}>#{i+1}</Text>
+                      </View>
+                      <View style={{ flex:1 }}>
+                        <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom:3 }}>
+                          <Text style={{ fontSize:13, color:C.ink, fontWeight:'700' }}>{a.nome}</Text>
+                          <Text style={{ fontSize:12, color:color, fontWeight:'800' }}>{a.total} emp.</Text>
+                        </View>
+                        <ProgressBar value={a.total} max={maxVal} color={color} />
+                      </View>
                     </View>
-                    <ProgressBar value={a.n} max={2} color={a.c} />
-                  </View>
-                </View>
-              ))}
+                  );
+                })
+              ) : (
+                <Text style={{ fontSize:12, color:C.mute, textAlign:'center', paddingVertical:10 }}>Nenhum empréstimo registrado.</Text>
+              )}
             </View>
           </>
         )}
@@ -308,20 +367,40 @@ export default function PainelScreen({ onLogout }) {
               ))}
             </View>
             <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14, marginBottom:14 }}>
-              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:14 }}>Alunos por naipe</Text>
+              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:14 }}>Alunos por Naipe</Text>
               {Object.entries(stats.alunos.naipes).length > 0 ? (
-                Object.entries(stats.alunos.naipes).map(([naipe, n]) => (
-                  <View key={naipe} style={{ marginBottom:12 }}>
-                    <View style={{ flexDirection:'row', justifyContent:'space-between', marginBottom:4 }}>
-                      <Text style={{ fontSize:13, color:C.soft }}>{naipe}</Text>
-                      <Text style={{ fontSize:12, color:C.gold, fontWeight:'700' }}>{n}</Text>
-                    </View>
-                    <ProgressBar value={n} max={stats.alunos.total} color={C.gold} />
-                  </View>
-                ))
+                <NaipeProgressList
+                  data={Object.entries(stats.alunos.naipes).map(([naipe, n]) => ({
+                    label: naipe,
+                    value: n,
+                    color: C.gold
+                  }))}
+                />
               ) : (
                 <View style={{ padding:10 }}>
                   <Text style={{ fontSize:12, color:C.mute, textAlign:'center' }}>Sem dados de naipes.</Text>
+                </View>
+              )}
+            </View>
+
+            <View style={{ backgroundColor:C.cream, borderWidth:1, borderColor:C.line, borderRadius:14, padding:14, marginBottom:14 }}>
+              <Text style={{ fontSize:13, fontWeight:'800', color:C.ink, marginBottom:8 }}>Alunos por Grupo Musical</Text>
+              {stats.grupos && stats.grupos.length > 0 ? (
+                <DoughnutChart
+                  size={120}
+                  strokeWidth={16}
+                  data={stats.grupos.map((g, idx) => {
+                    const cores = [C.gold, C.blue, '#8E44AD', '#16A085', '#2C3E50', '#D35400', '#27AE60'];
+                    return {
+                      label: g.label,
+                      value: g.value,
+                      color: cores[idx % cores.length],
+                    };
+                  })}
+                />
+              ) : (
+                <View style={{ padding:10 }}>
+                  <Text style={{ fontSize:12, color:C.mute, textAlign:'center' }}>Sem dados de grupos.</Text>
                 </View>
               )}
             </View>
